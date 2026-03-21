@@ -1,0 +1,33 @@
+name: Update League Table
+
+on:
+  schedule:
+    - cron: '0 8 * * 1,4'  # Every Monday and Thursday at 8am UTC
+  workflow_dispatch:       # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run league update
+        run: python update_league.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html league_table.csv league_detailed.csv ranking.csv
+          git diff --cached --quiet || git commit -m "Update league table $(date -u +%Y-%m-%d)"
+          git push
