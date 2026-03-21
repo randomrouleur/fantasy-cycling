@@ -1,152 +1,252 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>2026 Fantasy Cycling League</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0f1117;
-    --card: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e2e4ea;
-    --text-dim: #8b8fa3;
-    --accent: #6c63ff;
-    --accent-glow: rgba(108, 99, 255, 0.15);
-    --gold: #f5c842;
-    --silver: #b0b8c8;
-    --bronze: #cd7f32;
+  /* --- Light theme (default) --- */
+  :root, [data-theme="light"] {
+    --bg: #f4f1ec;
+    --card: #ffffff;
+    --border: #e0dbd3;
+    --text: #2c2a26;
+    --text-dim: #8a847a;
+    --accent: #c8102e;
+    --accent-hover: rgba(200, 16, 46, 0.07);
+    --th-bg: #2c2a26;
+    --th-text: #f4f1ec;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+    --gold: #b8860b;
+    --silver: #6b7280;
+    --bronze: #a0522d;
+    --toggle-bg: #e0dbd3;
+    --toggle-fg: #2c2a26;
   }
+
+  /* --- Dark theme --- */
+  [data-theme="dark"] {
+    --bg: #111115;
+    --card: #1b1b21;
+    --border: #2a2a34;
+    --text: #e2e0dc;
+    --text-dim: #7a7770;
+    --accent: #e63950;
+    --accent-hover: rgba(230, 57, 80, 0.1);
+    --th-bg: #e63950;
+    --th-text: #fff;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3), 0 8px 32px rgba(0,0,0,0.2);
+    --gold: #f5c842;
+    --silver: #a0a6b4;
+    --bronze: #cd7f32;
+    --toggle-bg: #2a2a34;
+    --toggle-fg: #e2e0dc;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
-    padding: 2rem 1rem;
+    padding: 2.5rem 1rem;
     min-height: 100vh;
+    transition: background 0.3s, color 0.3s;
   }
-  .container { max-width: 800px; margin: 0 auto; }
-  h1 {
+
+  .container { max-width: 820px; margin: 0 auto; }
+
+  /* --- Header --- */
+  header {
     text-align: center;
-    font-size: 1.8rem;
-    font-weight: 700;
-    margin-bottom: 0.25rem;
-    letter-spacing: -0.02em;
+    margin-bottom: 2.5rem;
+    position: relative;
+  }
+  h1 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 2.2rem;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.2rem;
   }
   .subtitle {
-    text-align: center;
     color: var(--text-dim);
-    font-size: 0.85rem;
-    margin-bottom: 2rem;
+    font-size: 0.82rem;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
+
+  /* --- Theme toggle --- */
+  .theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--toggle-bg);
+    border: none;
+    border-radius: 20px;
+    width: 52px;
+    height: 28px;
+    cursor: pointer;
+    transition: background 0.3s;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+  }
+  .theme-toggle .knob {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--toggle-fg);
+    transition: transform 0.3s, background 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+  [data-theme="dark"] .theme-toggle .knob {
+    transform: translateX(24px);
+  }
+
+  /* --- Standings table --- */
   table.standings {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
     background: var(--card);
-    border-radius: 12px;
+    border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow);
   }
   table.standings th {
-    background: var(--accent);
-    color: #fff;
+    background: var(--th-bg);
+    color: var(--th-text);
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.75rem 1rem;
+    letter-spacing: 0.08em;
+    padding: 0.7rem 1rem;
     text-align: left;
   }
   table.standings td {
-    padding: 0.75rem 1rem;
+    padding: 0.7rem 1rem;
     border-bottom: 1px solid var(--border);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
+    transition: background 0.15s;
   }
   table.standings tr:last-child td { border-bottom: none; }
-  table.standings tr:hover { background: var(--accent-glow); }
-  td.rank { font-weight: 700; width: 3rem; text-align: center; }
-  td.points { font-weight: 600; font-variant-numeric: tabular-nums; }
-  td.null-count { color: var(--text-dim); text-align: center; }
-  tr:nth-child(1) td.rank { color: var(--gold); }
-  tr:nth-child(2) td.rank { color: var(--silver); }
-  tr:nth-child(3) td.rank { color: var(--bronze); }
+  table.standings tbody tr:hover { background: var(--accent-hover); }
+  td.rank {
+    font-weight: 700;
+    width: 3rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  td.manager { font-weight: 500; }
+  td.points {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  td.null-count { color: var(--text-dim); text-align: center; font-variant-numeric: tabular-nums; }
+  tbody tr:nth-child(1) td.rank { color: var(--gold); }
+  tbody tr:nth-child(2) td.rank { color: var(--silver); }
+  tbody tr:nth-child(3) td.rank { color: var(--bronze); }
 
+  /* --- Breakdown --- */
   h2 {
-    font-size: 1.2rem;
-    font-weight: 600;
-    margin-bottom: 1rem;
-    color: var(--text-dim);
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 1.3rem;
+    font-weight: 400;
+    margin-bottom: 0.75rem;
   }
   .manager-detail {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    margin-bottom: 0.4rem;
     overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: background 0.3s, border-color 0.3s;
   }
   .manager-detail summary {
-    padding: 0.75rem 1rem;
+    padding: 0.65rem 1rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     user-select: none;
     list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   .manager-detail summary::-webkit-details-marker { display: none; }
   .manager-detail summary::before {
-    content: '▸';
+    content: '\25B8';
     display: inline-block;
-    margin-right: 0.5rem;
     transition: transform 0.2s;
     color: var(--accent);
+    font-size: 0.75rem;
   }
   .manager-detail[open] summary::before { transform: rotate(90deg); }
   .rider-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
   .rider-table th {
     text-align: left;
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 1rem;
     color: var(--text-dim);
-    font-weight: 500;
-    font-size: 0.75rem;
+    font-weight: 600;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     border-bottom: 1px solid var(--border);
   }
   .rider-table td {
-    padding: 0.5rem 1rem;
+    padding: 0.45rem 1rem;
     border-bottom: 1px solid var(--border);
   }
   .rider-table tr:last-child td { border-bottom: none; }
   .rider-table td.points { font-weight: 600; font-variant-numeric: tabular-nums; }
-  .rider-table td.team { color: var(--text-dim); font-size: 0.8rem; }
+  .rider-table td.team { color: var(--text-dim); font-size: 0.78rem; }
   .rider-table td.rider-rank { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
+  /* --- Footer --- */
   .updated {
     text-align: center;
     color: var(--text-dim);
-    font-size: 0.75rem;
-    margin-top: 2rem;
+    font-size: 0.72rem;
+    margin-top: 2.5rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border);
+    letter-spacing: 0.02em;
   }
+
+  /* --- Responsive --- */
   @media (max-width: 600px) {
-    body { padding: 1rem 0.5rem; }
-    h1 { font-size: 1.4rem; }
-    table.standings td, table.standings th { padding: 0.5rem 0.6rem; font-size: 0.85rem; }
-    .rider-table td, .rider-table th { padding: 0.4rem 0.6rem; }
+    body { padding: 1.25rem 0.5rem; }
+    h1 { font-size: 1.6rem; }
+    table.standings td, table.standings th { padding: 0.5rem 0.6rem; font-size: 0.82rem; }
+    .rider-table td, .rider-table th { padding: 0.35rem 0.6rem; }
+    .theme-toggle { top: -2px; }
   }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>2026 Fantasy Cycling League</h1>
-  <p class="subtitle">Points sourced from ProCyclingStats individual ranking</p>
+  <header>
+    <h1>2026 Fantasy Cycling League</h1>
+    <p class="subtitle">Points sourced from ProCyclingStats season ranking</p>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+      <span class="knob"></span>
+    </button>
+  </header>
 
   <table class="standings">
     <thead>
@@ -716,7 +816,18 @@
         </table>
       </details>
 
-  <p class="updated">Last updated: 2026-03-21 08:42 UTC</p>
+  <p class="updated">Last updated: 2026-03-21 08:55 UTC</p>
 </div>
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  }
+  const saved = localStorage.getItem('theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', saved);
+</script>
 </body>
 </html>
