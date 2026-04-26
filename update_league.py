@@ -717,6 +717,52 @@ def generate_html(
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#6b6b6b';
 
+  // Hover-highlight plugin: dims non-hovered datasets to 25% opacity
+  const hoverHighlight = {{
+    id: 'hoverHighlight',
+    beforeEvent(chart, args) {{
+      const evt = args.event;
+      if (evt.type === 'mouseout') {{
+        chart.data.datasets.forEach(ds => {{
+          ds.borderColor = ds._originalColor || ds.borderColor;
+          ds.borderWidth = ds._originalWidth || ds.borderWidth;
+        }});
+        chart.update('none');
+        return;
+      }}
+      if (evt.type !== 'mousemove') return;
+      const elements = chart.getElementsAtEventForMode(evt, 'index', {{ intersect: false }}, false);
+      if (!elements.length) return;
+      // Find which dataset the cursor is closest to
+      let closest = elements[0];
+      let minDist = Infinity;
+      elements.forEach(el => {{
+        const meta = chart.getDatasetMeta(el.datasetIndex);
+        const pt = meta.data[el.index];
+        if (pt) {{
+          const dist = Math.abs(pt.y - evt.y);
+          if (dist < minDist) {{ minDist = dist; closest = el; }}
+        }}
+      }});
+      const activeIdx = closest.datasetIndex;
+      chart.data.datasets.forEach((ds, i) => {{
+        if (!ds._originalColor) {{
+          ds._originalColor = ds.borderColor;
+          ds._originalWidth = ds.borderWidth;
+        }}
+        if (i === activeIdx) {{
+          ds.borderColor = ds._originalColor;
+          ds.borderWidth = ds._originalWidth + 1;
+        }} else {{
+          // 25% opacity (75% dimmed)
+          ds.borderColor = ds._originalColor + '40';
+          ds.borderWidth = ds._originalWidth;
+        }}
+      }});
+      chart.update('none');
+    }}
+  }};
+
   // --- 1. Team Points Over Time (line chart) ---
   if (history.length >= 1) {{
     new Chart(document.getElementById('pointsOverTime'), {{
@@ -747,6 +793,7 @@ def generate_html(
           x: {{ grid: {{ display: false }} }},
         }},
       }},
+      plugins: [hoverHighlight],
     }});
   }}
 
@@ -786,6 +833,7 @@ def generate_html(
           x: {{ grid: {{ display: false }} }},
         }},
       }},
+      plugins: [hoverHighlight],
     }});
   }} else {{
     document.getElementById('positionOverTime').parentElement.querySelector('h3').textContent += ' (needs 2+ updates)';
