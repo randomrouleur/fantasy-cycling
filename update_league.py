@@ -6,7 +6,7 @@ import csv
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import cloudscraper
 import yaml
@@ -369,29 +369,33 @@ def generate_html(
     hot_riders_html = ""
     if history and len(history) >= 2:
         latest = history[-1]
-        # Find the snapshot from ~4 weeks ago (or earliest available)
-        month_ago_idx = max(0, len(history) - 5)
-        baseline = history[month_ago_idx]
+        # Pick the snapshot whose date is closest to ~28 days before latest.
+        # Snapshot cadence is mixed (weekly backfill + 2x/week live), so an
+        # index-based offset would misrepresent the window.
+        latest_dt = datetime.strptime(latest["date"], "%Y-%m-%d")
+        target_dt = latest_dt - timedelta(days=28)
+        baseline = min(
+            history[:-1],
+            key=lambda h: abs((datetime.strptime(h["date"], "%Y-%m-%d") - target_dt).days),
+        )
         baseline_date = baseline["date"]
         latest_date = latest["date"]
+
+        def _rider_points(snapshot: dict, rider_name: str) -> int:
+            # Search across every manager's roster: a rider may have been on
+            # a different team at baseline if a transfer happened in-window.
+            for mgr_data in snapshot["teams"].values():
+                for rr in mgr_data.get("riders", []):
+                    if rr["rider"] == rider_name:
+                        return rr["points"]
+            return 0
 
         gains = []
         for mgr, details in manager_details.items():
             for r in details:
                 rider_name = r["rider"]
-                # Get current and baseline points for this rider
-                current_pts = 0
-                baseline_pts = 0
-                if mgr in latest["teams"]:
-                    for rr in latest["teams"][mgr].get("riders", []):
-                        if rr["rider"] == rider_name:
-                            current_pts = rr["points"]
-                            break
-                if mgr in baseline["teams"]:
-                    for rr in baseline["teams"][mgr].get("riders", []):
-                        if rr["rider"] == rider_name:
-                            baseline_pts = rr["points"]
-                            break
+                current_pts = _rider_points(latest, rider_name)
+                baseline_pts = _rider_points(baseline, rider_name)
                 gained = current_pts - baseline_pts
                 if gained > 0:
                     gains.append({
