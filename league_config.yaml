@@ -81,7 +81,7 @@ first_half:
     - WANG Gustav
     - POGAČAR Tadej
 
-  Geminiani's Hipsters:
+  Gemini's Hipsters:
     - BISIAUX Léo
     - NORDHAGEN Jørgen
     - LAMPERTI Luke
@@ -98,3 +98,63 @@ second_half: {}
 aliases:
   GEE-WEST Derek: GEE Derek
   PIDCOCK Tom: PIDCOCK Thomas
+
+# Auction costs from the draft ($1000 budget per auctioning team).
+# Joe and Gemini's Hipsters joined after the auction (free picks).
+auction_costs:
+  AYUSO Juan: 280
+  VINGEGAARD Jonas: 600
+  VINE Jay: 110
+  NARVÁEZ Jhonatan: 1
+  TARLING Joshua: 1
+  WILLIAMS Stephen: 3
+  FORTUNATO Lorenzo: 1
+  O'CONNOR Ben: 1
+  PHILIPSEN Jasper: 230
+  KOOIJ Olav: 190
+  MERLIER Tim: 210
+  PEDERSEN Mads: 340
+  STRONG Corbin: 5
+  CHRISTEN Jan: 1
+  BLACKMORE Joseph: 5
+  HINDLEY Jai: 5
+  HEALY Ben: 150
+  JORGENSON Matteo: 170
+  PIDCOCK Thomas: 250
+  ONLEY Oscar: 170
+  ROGLIČ Primož: 118
+  ARENSMAN Thymen: 55
+  GANNA Filippo: 40
+  ALAPHILIPPE Julian: 12
+  EVENEPOEL Remco: 520
+  BRENNAN Matthew: 220
+  MCNULTY Brandon: 30
+  ALMEIDA João: 88
+  GRÉGOIRE Romain: 30
+  MOSCHETTI Matteo: 1
+  YATES Adam: 66
+  UIJTDEBROEKS Cian: 20
+  VAUQUELIN Kévin: 160
+  CICCONE Giulio: 120
+  GALL Felix: 115
+  DEL TORO Isaac: 475
+  MARTINEZ Lenny: 40
+  POWLESS Neilson: 10
+  GIRMAY Biniam: 50
+  JEANNIÈRE Emilien: 25
+  DE LIE Arnaud: 260
+  SKJELMOSE Mattias: 155
+  MAGNIER Paul: 120
+  VAN DER POEL Mathieu: 260
+  CARAPAZ Richard: 50
+  NYS Thibau: 40
+  SEIXAS Paul: 50
+  GEE Derek: 15
+  VAN AERT Wout: 210
+  LIPOWITZ Florian: 300
+  MILAN Jonathan: 220
+  SCARONI Christian: 160
+  WRIGHT Fred: 30
+  PELLIZZARI Giulio: 15
+  STORER Michael: 15
+  DEL GROSSO Tibor: 1

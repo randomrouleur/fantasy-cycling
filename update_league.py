@@ -6,7 +6,7 @@ import csv
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import cloudscraper
 import yaml
@@ -268,6 +268,7 @@ def generate_html(
     transfers_done: bool = False,
     snapshot: dict[str, int] | None = None,
     history: list[dict] | None = None,
+    auction_costs: dict[str, int] | None = None,
 ):
     """Generate a self-contained HTML league table."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -284,11 +285,18 @@ def generate_html(
                 display_points = max(0, current - baseline)
             else:
                 display_points = current
+            cost = (auction_costs or {}).get(rider)
+            if cost and cost > 0 and display_points > 0:
+                value = round(display_points / cost, 1)
+            else:
+                value = None
             details.append({
                 "rider": rider,
                 "points": display_points,
                 "rank": info.get("rank", "—"),
                 "team": info.get("team", ""),
+                "cost": cost,
+                "value": value,
             })
         details.sort(key=lambda x: x["points"], reverse=True)
         manager_details[manager] = details
@@ -309,33 +317,160 @@ def generate_html(
         mgr = entry["manager"]
         riders_html = ""
 
+        has_costs = auction_costs is not None
+
         # Show banked points row if transfers have happened
         if transfers_done and entry["banked"] > 0:
+            banked_extra = "<td></td>" if has_costs else ""
             riders_html += f"""            <tr class="banked-row">
               <td><em>1st Half (banked)</em></td>
               <td class="team"></td>
               <td class="points">{entry['banked']:,}</td>
+              {banked_extra}
               <td class="rider-rank"></td>
             </tr>
 """
 
         for r in manager_details[mgr]:
             rank_display = f"#{r['rank']}" if r["rank"] != "—" else "—"
+            if has_costs:
+                if r["cost"] is not None and r["cost"] > 0:
+                    cost_display = f"${r['cost']}"
+                    value_display = f"{r['value']:.1f}" if r["value"] else "—"
+                elif r["cost"] == 0:
+                    cost_display = "free"
+                    value_display = "—"
+                else:
+                    cost_display = "—"
+                    value_display = "—"
+                value_td = f'<td class="value">{value_display}</td>'
+            else:
+                value_td = ""
             riders_html += f"""            <tr>
               <td>{r['rider']}</td>
               <td class="team">{r['team']}</td>
               <td class="points">{r['points']:,}</td>
+              {value_td}
               <td class="rider-rank">{rank_display}</td>
             </tr>
 """
+        value_th = "<th>Pts/$</th>" if has_costs else ""
         detail_sections += f"""      <details class="manager-detail">
         <summary>{mgr} — {entry['points']:,} pts</summary>
         <table class="rider-table">
-          <thead><tr><th>Rider</th><th>Team</th><th>Points</th><th>PCS Rank</th></tr></thead>
+          <thead><tr><th>Rider</th><th>Team</th><th>Points</th>{value_th}<th>PCS Rank</th></tr></thead>
           <tbody>
 {riders_html}          </tbody>
         </table>
       </details>
+"""
+
+    # Build top 10 hot riders (most points gained in the last month)
+    hot_riders_html = ""
+    if history and len(history) >= 2:
+        latest = history[-1]
+        # Pick the snapshot whose date is closest to ~28 days before latest.
+        # Snapshot cadence is mixed (weekly backfill + 2x/week live), so an
+        # index-based offset would misrepresent the window.
+        latest_dt = datetime.strptime(latest["date"], "%Y-%m-%d")
+        target_dt = latest_dt - timedelta(days=28)
+        baseline = min(
+            history[:-1],
+            key=lambda h: abs((datetime.strptime(h["date"], "%Y-%m-%d") - target_dt).days),
+        )
+        baseline_date = baseline["date"]
+        latest_date = latest["date"]
+
+        def _rider_points(snapshot: dict, rider_name: str) -> int:
+            # Search across every manager's roster: a rider may have been on
+            # a different team at baseline if a transfer happened in-window.
+            for mgr_data in snapshot["teams"].values():
+                for rr in mgr_data.get("riders", []):
+                    if rr["rider"] == rider_name:
+                        return rr["points"]
+            return 0
+
+        gains = []
+        for mgr, details in manager_details.items():
+            for r in details:
+                rider_name = r["rider"]
+                current_pts = _rider_points(latest, rider_name)
+                baseline_pts = _rider_points(baseline, rider_name)
+                gained = current_pts - baseline_pts
+                if gained > 0:
+                    gains.append({
+                        "rider": rider_name,
+                        "manager": mgr,
+                        "gained": gained,
+                        "total": current_pts,
+                    })
+
+        gains.sort(key=lambda x: x["gained"], reverse=True)
+
+        hot_rows = ""
+        for i, g in enumerate(gains[:10], 1):
+            hot_rows += f"""          <tr>
+            <td class="rank">{i}</td>
+            <td>{g['rider']}</td>
+            <td class="team">{g['manager']}</td>
+            <td class="points">+{g['gained']:,}</td>
+            <td class="points">{g['total']:,}</td>
+          </tr>
+"""
+        # Format the date range
+        b_parts = baseline_date.split("-")
+        l_parts = latest_date.split("-")
+        date_range = f"{b_parts[2]}/{b_parts[1]} — {l_parts[2]}/{l_parts[1]}"
+
+        hot_riders_html = f"""
+  <h2>Hot Riders</h2>
+  <p class="value-note">Most points gained in the last month ({date_range})</p>
+  <table class="standings value-table">
+    <thead>
+      <tr><th>#</th><th>Rider</th><th>Manager</th><th>Gained</th><th>Total</th></tr>
+    </thead>
+    <tbody>
+{hot_rows}    </tbody>
+  </table>
+"""
+
+    # Build top 10 best value table (riders that cost > $0)
+    best_value_html = ""
+    if auction_costs:
+        all_riders_value = []
+        for mgr, details in manager_details.items():
+            for r in details:
+                if r["cost"] and r["cost"] > 0 and r["points"] > 0:
+                    all_riders_value.append({
+                        "rider": r["rider"],
+                        "manager": mgr,
+                        "points": r["points"],
+                        "cost": r["cost"],
+                        "value": r["value"],
+                    })
+        all_riders_value.sort(key=lambda x: x["value"], reverse=True)
+
+        value_rows = ""
+        for i, rv in enumerate(all_riders_value[:10], 1):
+            value_rows += f"""          <tr>
+            <td class="rank">{i}</td>
+            <td>{rv['rider']}</td>
+            <td class="team">{rv['manager']}</td>
+            <td class="points">{rv['points']:,}</td>
+            <td class="cost">${rv['cost']}</td>
+            <td class="value">{rv['value']:.1f}</td>
+          </tr>
+"""
+        best_value_html = f"""
+  <h2>Best Value Picks</h2>
+  <p class="value-note">Top 10 riders by points per dollar spent (excludes free picks)</p>
+  <table class="standings value-table">
+    <thead>
+      <tr><th>#</th><th>Rider</th><th>Manager</th><th>Points</th><th>Cost</th><th>Pts/$</th></tr>
+    </thead>
+    <tbody>
+{value_rows}    </tbody>
+  </table>
 """
 
     # Build history JSON for embedding in HTML
@@ -517,7 +652,16 @@ def generate_html(
   .rider-table td.points {{ font-weight: 600; font-variant-numeric: tabular-nums; }}
   .rider-table td.team {{ color: var(--text-secondary); font-size: 0.78rem; }}
   .rider-table td.rider-rank {{ color: var(--text-secondary); font-variant-numeric: tabular-nums; }}
+  .rider-table td.value {{ color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }}
   .banked-row td {{ background: var(--surface); }}
+  .value-note {{
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    margin-bottom: 0.75rem;
+    margin-top: -0.4rem;
+  }}
+  .value-table td.cost {{ font-variant-numeric: tabular-nums; }}
+  .value-table td.value {{ color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }}
 
   /* --- Charts --- */
   .charts-section {{
@@ -561,12 +705,38 @@ def generate_html(
     letter-spacing: 0.01em;
   }}
 
+  /* --- Chart zoom toggle --- */
+  .chart-zoom {{
+    display: none;
+    text-align: right;
+    margin-bottom: 0.5rem;
+  }}
+  .chart-zoom button {{
+    font-family: inherit;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-left: 0.3rem;
+  }}
+  .chart-zoom button.active {{
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+  }}
+
   /* --- Responsive --- */
   @media (max-width: 600px) {{
     body {{ padding: 1.5rem 0.75rem; }}
     h1 {{ font-size: 1.5rem; }}
     table.standings td, table.standings th {{ padding: 0.5rem 0.5rem; font-size: 0.82rem; }}
     .rider-table td, .rider-table th {{ padding: 0.3rem 0.5rem; }}
+    .chart-container canvas {{ max-height: 350px; }}
+    .chart-zoom {{ display: block; }}
   }}
 </style>
 </head>
@@ -587,18 +757,24 @@ def generate_html(
 
   <h2>Rider Breakdown</h2>
 {detail_sections}
-
   <div class="charts-section">
     <h2>Season Progress</h2>
 
     <div class="chart-container">
       <h3>Team Points Over Time</h3>
+      <div class="chart-zoom" id="zoomPoints">
+        <button data-range="month" class="active">Last month</button>
+        <button data-range="all">Full season</button>
+      </div>
       <canvas id="pointsOverTime"></canvas>
-      <p class="chart-note">Updated every Monday &amp; Thursday</p>
     </div>
 
     <div class="chart-container">
       <h3>League Position Over Time</h3>
+      <div class="chart-zoom" id="zoomPosition">
+        <button data-range="month" class="active">Last month</button>
+        <button data-range="all">Full season</button>
+      </div>
       <canvas id="positionOverTime"></canvas>
     </div>
 
@@ -612,8 +788,9 @@ def generate_html(
       <canvas id="riderContribution"></canvas>
     </div>
   </div>
-
-  <p class="updated">Last updated: {now}</p>
+{hot_riders_html}
+{best_value_html}
+  <p class="updated">Updated every Monday &amp; Thursday<br>Last updated: {now}</p>
 </div>
 
 <script>
@@ -631,74 +808,160 @@ def generate_html(
   managers.forEach((m, i) => colourMap[m] = COLOURS[i % COLOURS.length]);
 
   // --- Helpers ---
+  const isMobile = window.innerWidth <= 600;
+  const lineWidth = isMobile ? 1.5 : 2;
+  const lineWidthBump = isMobile ? 1.5 : 2.5;
+  const ptRadius = isMobile ? 0 : (history.length > 20 ? 0 : 3);
+  const ptRadiusBump = isMobile ? 0 : (history.length > 20 ? 0 : 4);
+
   const dates = history.map(h => h.date);
   const shortDates = dates.map(d => {{
     const parts = d.split('-');
     return parts[2] + '/' + parts[1];
   }});
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Month labels: show month name on first occurrence, blank otherwise
+  const monthLabels = dates.map((d, i) => {{
+    const month = parseInt(d.split('-')[1], 10);
+    const prevMonth = i > 0 ? parseInt(dates[i-1].split('-')[1], 10) : -1;
+    return month !== prevMonth ? MONTHS[month - 1] : '';
+  }});
+
+  // Zoom: find index for ~1 month ago
+  const lastMonthIdx = Math.max(0, dates.length - 5);  // ~4-5 weekly entries = 1 month
+
+  function setupZoom(containerId, chart, allDateLabels, allMonthLabels, allDatasets) {{
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const buttons = container.querySelectorAll('button');
+    // Default to last month on mobile
+    if (isMobile && dates.length > 5) {{
+      applyZoom(chart, allDateLabels, allDatasets, lastMonthIdx);
+    }} else {{
+      // Desktop: show full season with month labels
+      applyZoom(chart, allMonthLabels, allDatasets, 0);
+    }}
+    buttons.forEach(btn => {{
+      btn.addEventListener('click', function() {{
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const range = btn.dataset.range;
+        if (range === 'month') {{
+          applyZoom(chart, allDateLabels, allDatasets, lastMonthIdx);
+        }} else {{
+          applyZoom(chart, allMonthLabels, allDatasets, 0);
+        }}
+      }});
+    }});
+  }}
+
+  function applyZoom(chart, labels, allDatasets, startIdx) {{
+    chart.data.labels = labels.slice(startIdx);
+    chart.data.datasets.forEach((ds, i) => {{
+      ds.data = allDatasets[i].slice(startIdx);
+    }});
+    // Update stored originals for hover highlight
+    chart._origColours = chart.data.datasets.map(d => d.borderColor);
+    chart._origWidths = chart.data.datasets.map(d => d.borderWidth);
+    chart.update();
+  }}
 
   // Chart.js defaults
   Chart.defaults.font.family = "'Hanken Grotesk', sans-serif";
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#6b6b6b';
 
+  // Line highlight on hover: dims non-hovered datasets
+  function lineHighlightOpts(baseOpts) {{
+    baseOpts.onHover = function(evt, elements, chart) {{
+      const ds = chart.data.datasets;
+      if (!elements || !elements.length) {{
+        // Reset all
+        ds.forEach((d, i) => {{
+          d.borderColor = chart._origColours[i];
+          d.borderWidth = chart._origWidths[i];
+        }});
+        chart.update('none');
+        return;
+      }}
+      // Use the first active element's dataset
+      const activeIdx = elements[0].datasetIndex;
+      ds.forEach((d, i) => {{
+        d.borderColor = (i === activeIdx) ? chart._origColours[i] : chart._origColours[i] + '40';
+        d.borderWidth = (i === activeIdx) ? chart._origWidths[i] + 1 : chart._origWidths[i];
+      }});
+      chart.update('none');
+    }};
+    // Change interaction to nearest dataset for better line targeting
+    baseOpts.interaction = {{ mode: 'nearest', intersect: false, axis: 'xy' }};
+    return baseOpts;
+  }}
+  function storeOriginals(chart) {{
+    chart._origColours = chart.data.datasets.map(d => d.borderColor);
+    chart._origWidths = chart.data.datasets.map(d => d.borderWidth);
+  }}
+
   // --- 1. Team Points Over Time (line chart) ---
   if (history.length >= 1) {{
-    new Chart(document.getElementById('pointsOverTime'), {{
+    const allPointsData = managers.map(m => history.map(h => h.teams[m] ? h.teams[m].total : null));
+    const c1 = new Chart(document.getElementById('pointsOverTime'), {{
       type: 'line',
       data: {{
-        labels: shortDates,
-        datasets: managers.map(m => ({{
+        labels: monthLabels.slice(),
+        datasets: managers.map((m, i) => ({{
           label: m,
-          data: history.map(h => h.teams[m] ? h.teams[m].total : null),
+          data: allPointsData[i].slice(),
           borderColor: colourMap[m],
           backgroundColor: colourMap[m] + '18',
-          borderWidth: 2,
-          pointRadius: history.length > 20 ? 0 : 3,
+          borderWidth: lineWidth,
+          pointRadius: ptRadius,
           pointHoverRadius: 5,
           tension: 0.25,
           fill: false,
         }})),
       }},
-      options: {{
+      options: lineHighlightOpts({{
         responsive: true,
-        interaction: {{ mode: 'index', intersect: false }},
+        aspectRatio: isMobile ? 1.2 : 2,
         plugins: {{
-          legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 12 }} }},
-          tooltip: {{ callbacks: {{ label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y ?? 0).toLocaleString() + ' pts' }} }},
+          legend: {{ position: 'bottom', labels: {{ boxWidth: 10, padding: 8, font: {{ size: isMobile ? 9 : 11 }} }} }},
+          tooltip: {{ mode: 'index', intersect: false, callbacks: {{ label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y ?? 0).toLocaleString() + ' pts' }} }},
         }},
         scales: {{
           y: {{ beginAtZero: true, grid: {{ color: '#e5e5e5' }}, ticks: {{ callback: v => v.toLocaleString() }} }},
           x: {{ grid: {{ display: false }} }},
         }},
-      }},
+      }}),
     }});
+    storeOriginals(c1);
+    setupZoom('zoomPoints', c1, shortDates.slice(), monthLabels.slice(), allPointsData);
   }}
 
   // --- 2. League Position Over Time (bump chart) ---
   if (history.length >= 2) {{
-    new Chart(document.getElementById('positionOverTime'), {{
+    const allPosData = managers.map(m => history.map(h => h.teams[m] ? h.teams[m].rank : null));
+    const c2 = new Chart(document.getElementById('positionOverTime'), {{
       type: 'line',
       data: {{
-        labels: shortDates,
-        datasets: managers.map(m => ({{
+        labels: monthLabels.slice(),
+        datasets: managers.map((m, i) => ({{
           label: m,
-          data: history.map(h => h.teams[m] ? h.teams[m].rank : null),
+          data: allPosData[i].slice(),
           borderColor: colourMap[m],
           backgroundColor: colourMap[m],
-          borderWidth: 2.5,
-          pointRadius: history.length > 20 ? 0 : 4,
+          borderWidth: lineWidthBump,
+          pointRadius: ptRadiusBump,
           pointHoverRadius: 6,
           tension: 0.25,
           fill: false,
         }})),
       }},
-      options: {{
+      options: lineHighlightOpts({{
         responsive: true,
-        interaction: {{ mode: 'index', intersect: false }},
+        aspectRatio: isMobile ? 1.2 : 2,
         plugins: {{
-          legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 12 }} }},
-          tooltip: {{ callbacks: {{ label: ctx => ctx.dataset.label + ': #' + ctx.parsed.y }} }},
+          legend: {{ position: 'bottom', labels: {{ boxWidth: 10, padding: 8, font: {{ size: isMobile ? 9 : 11 }} }} }},
+          tooltip: {{ mode: 'index', intersect: false, callbacks: {{ label: ctx => ctx.dataset.label + ': #' + ctx.parsed.y }} }},
         }},
         scales: {{
           y: {{
@@ -710,15 +973,17 @@ def generate_html(
           }},
           x: {{ grid: {{ display: false }} }},
         }},
-      }},
+      }}),
     }});
+    storeOriginals(c2);
+    setupZoom('zoomPosition', c2, shortDates.slice(), monthLabels.slice(), allPosData);
   }} else {{
     document.getElementById('positionOverTime').parentElement.querySelector('h3').textContent += ' (needs 2+ updates)';
   }}
 
   // --- 3. Points Gained Per Update (grouped bar chart) ---
   if (history.length >= 2) {{
-    const gainDates = shortDates.slice(1);
+    const gainMonthLabels = monthLabels.slice(1);
     const gainDatasets = managers.map(m => ({{
       label: m,
       data: history.slice(1).map((h, i) => {{
@@ -733,7 +998,7 @@ def generate_html(
 
     new Chart(document.getElementById('pointsGained'), {{
       type: 'bar',
-      data: {{ labels: gainDates, datasets: gainDatasets }},
+      data: {{ labels: gainMonthLabels, datasets: gainDatasets }},
       options: {{
         responsive: true,
         plugins: {{
@@ -792,12 +1057,23 @@ def generate_html(
       borderWidth: 0.5,
     }}));
 
+    // Wrap long manager names into multi-line labels for Chart.js
+    const wrappedLabels = managers.map(name => {{
+      if (name.length > 12) {{
+        const words = name.split(' ');
+        const mid = Math.ceil(words.length / 2);
+        return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+      }}
+      return name;
+    }});
+
     new Chart(document.getElementById('riderContribution'), {{
       type: 'bar',
-      data: {{ labels: managers, datasets: riderDatasets }},
+      data: {{ labels: wrappedLabels, datasets: riderDatasets }},
       options: {{
         indexAxis: 'y',
         responsive: true,
+        aspectRatio: isMobile ? 0.9 : 1.5,
         plugins: {{
           legend: {{ display: false }},
           tooltip: {{
@@ -819,6 +1095,10 @@ def generate_html(
           y: {{
             stacked: true,
             grid: {{ display: false }},
+            ticks: {{
+              autoSkip: false,
+              font: {{ size: isMobile ? 9 : 11 }},
+            }},
           }},
         }},
       }},
@@ -933,6 +1213,7 @@ def main():
     first_half_teams = config["first_half"]
     active_teams = get_active_teams(config)
     rider_to_manager = build_rider_to_manager(active_teams)
+    auction_costs = config.get("auction_costs", {})
 
     # Step 1: Fetch rankings
     raw = fetch_rankings()
@@ -990,6 +1271,7 @@ def main():
         os.path.join(base_dir, "docs", "index.html"),
         transfers_done, snapshot,
         history=history,
+        auction_costs=auction_costs,
     )
 
     print("\nDone!")
