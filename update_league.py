@@ -476,6 +476,26 @@ def generate_html(
     # Build history JSON for embedding in HTML
     history_json = json.dumps(history or [], ensure_ascii=False)
 
+    # Decide at render time whether to emit the banked-segment JS block.
+    # The block is only meaningful once transfers have happened and at least
+    # one manager has nonzero banked points in the latest snapshot. Emitting
+    # it unconditionally would put the literal "Banked (1st half)" string in
+    # the HTML even pre-transfer, defeating runtime suppression.
+    banked_segment_js = ""
+    if history:
+        latest_teams = (history[-1] or {}).get("teams", {}) or {}
+        if any((t or {}).get("banked", 0) > 0 for t in latest_teams.values()):
+            banked_segment_js = """
+    const bankedValues = managers.map(m => (latestSnap.teams[m] && latestSnap.teams[m].banked) || 0);
+    riderDatasets.unshift({
+      label: 'Banked (1st half)',
+      data: bankedValues,
+      backgroundColor: '#a8a8a8',
+      borderColor: '#ffffff',
+      borderWidth: 0.5,
+    });
+"""
+
     # Build manager list in standings order for consistent chart colours
     manager_order = [e["manager"] for e in standings]
     manager_order_json = json.dumps(manager_order, ensure_ascii=False)
@@ -1056,6 +1076,7 @@ def generate_html(
       borderColor: '#ffffff',
       borderWidth: 0.5,
     }}));
+{banked_segment_js}
 
     // Wrap long manager names into multi-line labels for Chart.js
     const wrappedLabels = managers.map(name => {{
