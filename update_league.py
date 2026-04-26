@@ -662,14 +662,12 @@ def generate_html(
 
   <h2>Rider Breakdown</h2>
 {detail_sections}
-{best_value_html}
   <div class="charts-section">
     <h2>Season Progress</h2>
 
     <div class="chart-container">
       <h3>Team Points Over Time</h3>
       <canvas id="pointsOverTime"></canvas>
-      <p class="chart-note">Updated every Monday &amp; Thursday</p>
     </div>
 
     <div class="chart-container">
@@ -687,8 +685,8 @@ def generate_html(
       <canvas id="riderContribution"></canvas>
     </div>
   </div>
-
-  <p class="updated">Last updated: {now}</p>
+{best_value_html}
+  <p class="updated">Updated every Monday &amp; Thursday<br>Last updated: {now}</p>
 </div>
 
 <script>
@@ -717,55 +715,39 @@ def generate_html(
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#6b6b6b';
 
-  // Hover-highlight plugin: dims non-hovered datasets to 25% opacity
-  const hoverHighlight = {{
-    id: 'hoverHighlight',
-    beforeEvent(chart, args) {{
-      const evt = args.event;
-      if (evt.type === 'mouseout') {{
-        chart.data.datasets.forEach(ds => {{
-          ds.borderColor = ds._originalColor || ds.borderColor;
-          ds.borderWidth = ds._originalWidth || ds.borderWidth;
+  // Line highlight on hover: dims non-hovered datasets
+  function lineHighlightOpts(baseOpts) {{
+    baseOpts.onHover = function(evt, elements, chart) {{
+      const ds = chart.data.datasets;
+      if (!elements || !elements.length) {{
+        // Reset all
+        ds.forEach((d, i) => {{
+          d.borderColor = chart._origColours[i];
+          d.borderWidth = chart._origWidths[i];
         }});
         chart.update('none');
         return;
       }}
-      if (evt.type !== 'mousemove') return;
-      const elements = chart.getElementsAtEventForMode(evt, 'index', {{ intersect: false }}, false);
-      if (!elements.length) return;
-      // Find which dataset the cursor is closest to
-      let closest = elements[0];
-      let minDist = Infinity;
-      elements.forEach(el => {{
-        const meta = chart.getDatasetMeta(el.datasetIndex);
-        const pt = meta.data[el.index];
-        if (pt) {{
-          const dist = Math.abs(pt.y - evt.y);
-          if (dist < minDist) {{ minDist = dist; closest = el; }}
-        }}
-      }});
-      const activeIdx = closest.datasetIndex;
-      chart.data.datasets.forEach((ds, i) => {{
-        if (!ds._originalColor) {{
-          ds._originalColor = ds.borderColor;
-          ds._originalWidth = ds.borderWidth;
-        }}
-        if (i === activeIdx) {{
-          ds.borderColor = ds._originalColor;
-          ds.borderWidth = ds._originalWidth + 1;
-        }} else {{
-          // 25% opacity (75% dimmed)
-          ds.borderColor = ds._originalColor + '40';
-          ds.borderWidth = ds._originalWidth;
-        }}
+      // Use the first active element's dataset
+      const activeIdx = elements[0].datasetIndex;
+      ds.forEach((d, i) => {{
+        d.borderColor = (i === activeIdx) ? chart._origColours[i] : chart._origColours[i] + '40';
+        d.borderWidth = (i === activeIdx) ? chart._origWidths[i] + 1 : chart._origWidths[i];
       }});
       chart.update('none');
-    }}
-  }};
+    }};
+    // Change interaction to nearest dataset for better line targeting
+    baseOpts.interaction = {{ mode: 'nearest', intersect: false, axis: 'xy' }};
+    return baseOpts;
+  }}
+  function storeOriginals(chart) {{
+    chart._origColours = chart.data.datasets.map(d => d.borderColor);
+    chart._origWidths = chart.data.datasets.map(d => d.borderWidth);
+  }}
 
   // --- 1. Team Points Over Time (line chart) ---
   if (history.length >= 1) {{
-    new Chart(document.getElementById('pointsOverTime'), {{
+    const c1 = new Chart(document.getElementById('pointsOverTime'), {{
       type: 'line',
       data: {{
         labels: shortDates,
@@ -781,25 +763,24 @@ def generate_html(
           fill: false,
         }})),
       }},
-      options: {{
+      options: lineHighlightOpts({{
         responsive: true,
-        interaction: {{ mode: 'index', intersect: false }},
         plugins: {{
           legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 12 }} }},
-          tooltip: {{ callbacks: {{ label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y ?? 0).toLocaleString() + ' pts' }} }},
+          tooltip: {{ mode: 'index', intersect: false, callbacks: {{ label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y ?? 0).toLocaleString() + ' pts' }} }},
         }},
         scales: {{
           y: {{ beginAtZero: true, grid: {{ color: '#e5e5e5' }}, ticks: {{ callback: v => v.toLocaleString() }} }},
           x: {{ grid: {{ display: false }} }},
         }},
-      }},
-      plugins: [hoverHighlight],
+      }}),
     }});
+    storeOriginals(c1);
   }}
 
   // --- 2. League Position Over Time (bump chart) ---
   if (history.length >= 2) {{
-    new Chart(document.getElementById('positionOverTime'), {{
+    const c2 = new Chart(document.getElementById('positionOverTime'), {{
       type: 'line',
       data: {{
         labels: shortDates,
@@ -815,12 +796,11 @@ def generate_html(
           fill: false,
         }})),
       }},
-      options: {{
+      options: lineHighlightOpts({{
         responsive: true,
-        interaction: {{ mode: 'index', intersect: false }},
         plugins: {{
           legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 12 }} }},
-          tooltip: {{ callbacks: {{ label: ctx => ctx.dataset.label + ': #' + ctx.parsed.y }} }},
+          tooltip: {{ mode: 'index', intersect: false, callbacks: {{ label: ctx => ctx.dataset.label + ': #' + ctx.parsed.y }} }},
         }},
         scales: {{
           y: {{
@@ -832,9 +812,9 @@ def generate_html(
           }},
           x: {{ grid: {{ display: false }} }},
         }},
-      }},
-      plugins: [hoverHighlight],
+      }}),
     }});
+    storeOriginals(c2);
   }} else {{
     document.getElementById('positionOverTime').parentElement.querySelector('h3').textContent += ' (needs 2+ updates)';
   }}
