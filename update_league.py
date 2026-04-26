@@ -365,6 +365,71 @@ def generate_html(
       </details>
 """
 
+    # Build top 10 hot riders (most points gained in the last month)
+    hot_riders_html = ""
+    if history and len(history) >= 2:
+        latest = history[-1]
+        # Find the snapshot from ~4 weeks ago (or earliest available)
+        month_ago_idx = max(0, len(history) - 5)
+        baseline = history[month_ago_idx]
+        baseline_date = baseline["date"]
+        latest_date = latest["date"]
+
+        gains = []
+        for mgr, details in manager_details.items():
+            for r in details:
+                rider_name = r["rider"]
+                # Get current and baseline points for this rider
+                current_pts = 0
+                baseline_pts = 0
+                if mgr in latest["teams"]:
+                    for rr in latest["teams"][mgr].get("riders", []):
+                        if rr["rider"] == rider_name:
+                            current_pts = rr["points"]
+                            break
+                if mgr in baseline["teams"]:
+                    for rr in baseline["teams"][mgr].get("riders", []):
+                        if rr["rider"] == rider_name:
+                            baseline_pts = rr["points"]
+                            break
+                gained = current_pts - baseline_pts
+                if gained > 0:
+                    gains.append({
+                        "rider": rider_name,
+                        "manager": mgr,
+                        "gained": gained,
+                        "total": current_pts,
+                    })
+
+        gains.sort(key=lambda x: x["gained"], reverse=True)
+
+        hot_rows = ""
+        for i, g in enumerate(gains[:10], 1):
+            hot_rows += f"""          <tr>
+            <td class="rank">{i}</td>
+            <td>{g['rider']}</td>
+            <td class="team">{g['manager']}</td>
+            <td class="points">+{g['gained']:,}</td>
+            <td class="points">{g['total']:,}</td>
+          </tr>
+"""
+        # Format the date range
+        b_parts = baseline_date.split("-")
+        l_parts = latest_date.split("-")
+        date_range = f"{b_parts[2]}/{b_parts[1]} — {l_parts[2]}/{l_parts[1]}"
+
+        hot_riders_html = f"""
+  <h2>Hot Riders</h2>
+  <p class="value-note">Most points gained in the last month ({date_range})</p>
+  <table class="standings value-table">
+    <thead>
+      <tr><th>#</th><th>Rider</th><th>Manager</th><th>Gained</th><th>Total</th></tr>
+    </thead>
+    <tbody>
+{hot_rows}    </tbody>
+  </table>
+"""
+
     # Build top 10 best value table (riders that cost > $0)
     best_value_html = ""
     if auction_costs:
@@ -719,6 +784,7 @@ def generate_html(
       <canvas id="riderContribution"></canvas>
     </div>
   </div>
+{hot_riders_html}
 {best_value_html}
   <p class="updated">Updated every Monday &amp; Thursday<br>Last updated: {now}</p>
 </div>
